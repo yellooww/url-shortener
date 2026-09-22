@@ -1,0 +1,72 @@
+package delete
+
+import (
+	"errors"
+	"log/slog"
+	"net/http"
+
+	resp "url-shortener/internal/lib/api/response"
+	"url-shortener/internal/service"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-playground/validator"
+
+	"github.com/go-chi/render"
+)
+
+type Response struct {
+	resp.Response
+	CountDeleted int64 `json:"countDeleted"`
+}
+
+type URLDeleter interface {
+	DeleteURL(alias string) (int64, error)
+}
+
+//go:generate go run github.com/vektra/mockery/v2@latest --name=URLDeleter --dir=. --output=./mocks --outpkg=mocks
+func New(log *slog.Logger, deleteURL URLDeleter) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		const fn = "handlers.url.delete.New"
+
+		log = log.With(
+			slog.String("fn", fn),
+			slog.String("request_id", middleware.GetReqID(r.Context())),
+		)
+
+		alias := chi.URLParam(r, "alias")
+		countDeleted, err := deleteURL.DeleteURL(alias)
+
+		var validErrs validator.ValidationErrors
+		if errors.As(err, &validErrs) {
+			log.Error("invalid request", "alias", alias, "error", err)
+			render.Status(r, http.StatusBadRequest)
+			render.JSON(w, r, resp.ValidationError(validErrs))
+			return
+		}
+		if errors.Is(err, service.ErrURLNotFound) {
+			log.Info("url not found", "alias", alias)
+			render.Status(r, http.StatusNotFound)
+			render.JSON(w, r, resp.Error("url not found"))
+			return
+		}
+		if err != nil {
+			log.Error("failed to delete url", "alias", alias)
+			render.Status(r, http.StatusInternalServerError)
+			render.JSON(w, r, resp.Error("failed to delete url"))
+			return
+		}
+
+		log.Info("deleted url", slog.String("alias", alias), slog.Int64("count_deleted", countDeleted))
+
+		responseOK(w, r, countDeleted)
+	}
+}
+
+func responseOK(w http.ResponseWriter, r *http.Request, countDeleted int64) {
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, Response{
+		Response:     resp.OK(),
+		CountDeleted: countDeleted,
+	})
+}
