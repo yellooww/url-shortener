@@ -1,6 +1,7 @@
 package delete
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -21,7 +22,7 @@ type Response struct {
 }
 
 type URLDeleter interface {
-	DeleteURL(alias string) (int64, error)
+	DeleteURL(ctx context.Context, alias string) (int64, error)
 }
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=URLDeleter --dir=. --output=./mocks --outpkg=mocks
@@ -35,7 +36,7 @@ func New(log *slog.Logger, deleteURL URLDeleter) http.HandlerFunc {
 		)
 
 		alias := chi.URLParam(r, "alias")
-		countDeleted, err := deleteURL.DeleteURL(alias)
+		countDeleted, err := deleteURL.DeleteURL(r.Context(), alias)
 
 		var validErrs validator.ValidationErrors
 		if errors.As(err, &validErrs) {

@@ -1,6 +1,7 @@
 package redirect
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -15,7 +16,7 @@ import (
 )
 
 type URLGetter interface {
-	GetURL(alias string) (string, error)
+	GetURL(ctx context.Context, alias string) (string, error)
 }
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=URLGetter --dir=. --output=./mocks --outpkg=mocks
@@ -30,7 +31,7 @@ func New(log *slog.Logger, urlGetter URLGetter) http.HandlerFunc {
 		)
 
 		alias := chi.URLParam(r, "alias")
-		url, err := urlGetter.GetURL(alias)
+		url, err := urlGetter.GetURL(r.Context(), alias)
 
 		var validErrs validator.ValidationErrors
 		if errors.As(err, &validErrs) {

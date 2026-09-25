@@ -11,12 +11,13 @@ import (
 	"url-shortener/internal/service"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDelete_Success(t *testing.T) {
 	urlDeleterMock := mocks.NewURLDeleter(t)
-	urlDeleterMock.On("DeleteURL", "test_alias").
+	urlDeleterMock.On("DeleteURL", mock.Anything, "test_alias").
 		Return(int64(1), nil).Once()
 
 	router := chi.NewRouter()
@@ -33,7 +34,7 @@ func TestDelete_Success(t *testing.T) {
 
 func TestDelete_NotFound(t *testing.T) {
 	urlDeleterMock := mocks.NewURLDeleter(t)
-	urlDeleterMock.On("DeleteURL", "missing").
+	urlDeleterMock.On("DeleteURL", mock.Anything, "missing").
 		Return(int64(0), service.ErrURLNotFound).Once()
 
 	router := chi.NewRouter()
@@ -49,7 +50,7 @@ func TestDelete_NotFound(t *testing.T) {
 
 func TestDelete_InternalServerError(t *testing.T) {
 	urlDeleterMock := mocks.NewURLDeleter(t)
-	urlDeleterMock.On("DeleteURL", "test_alias").
+	urlDeleterMock.On("DeleteURL", mock.Anything, "test_alias").
 		Return(int64(0), errors.New("database error")).Once()
 
 	router := chi.NewRouter()

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"url-shortener/internal/http-server/handlers/url/save"
@@ -18,7 +19,7 @@ import (
 
 func TestSave_Success(t *testing.T) {
 	urlSaverMock := mocks.NewURLSaver(t)
-	urlSaverMock.On("SaveURL", "https://google.com", "test_alias").
+	urlSaverMock.On("SaveURL", mock.Anything, "https://google.com", "test_alias").
 		Return("test_alias", nil).Once()
 
 	handler := save.New(slogdiscard.NewDiscardLogger(), urlSaverMock)
@@ -63,7 +64,7 @@ func TestSave_BadRequest(t *testing.T) {
 
 func TestSave_Conflict(t *testing.T) {
 	urlSaverMock := mocks.NewURLSaver(t)
-	urlSaverMock.On("SaveURL", "https://google.com", "test_alias").
+	urlSaverMock.On("SaveURL", mock.Anything, "https://google.com", "test_alias").
 		Return("", service.ErrURLExists).Once()
 
 	handler := save.New(slogdiscard.NewDiscardLogger(), urlSaverMock)
@@ -86,7 +87,7 @@ func TestSave_Conflict(t *testing.T) {
 
 func TestSave_InternalServerError(t *testing.T) {
 	urlSaverMock := mocks.NewURLSaver(t)
-	urlSaverMock.On("SaveURL", "https://google.com", "test_alias").
+	urlSaverMock.On("SaveURL", mock.Anything, "https://google.com", "test_alias").
 		Return("", errors.New("database error")).Once()
 
 	handler := save.New(slogdiscard.NewDiscardLogger(), urlSaverMock)

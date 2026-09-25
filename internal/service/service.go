@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"url-shortener/internal/lib/random"
 	"url-shortener/internal/storage"
@@ -16,10 +17,10 @@ var (
 )
 
 type Storage interface {
-	SaveURL(urlToSave string, alias string) (int64, error)
-	GetURL(alias string) (string, error)
-	DeleteURL(alias string) (int64, error)
-	UpdateURL(alias string, newURL string) (int64, error)
+	SaveURL(ctx context.Context, urlToSave string, alias string) (int64, error)
+	GetURL(ctx context.Context, alias string) (string, error)
+	DeleteURL(ctx context.Context, alias string) (int64, error)
+	UpdateURL(ctx context.Context, alias string, newURL string) (int64, error)
 }
 
 type Service struct {
@@ -32,29 +33,25 @@ func New(storage Storage) *Service {
 
 type saveRequest struct {
 	URL   string `json:"url" validate:"required,url"`
-	Alias string `json:"alias,omitempty"`
+	Alias string `json:"alias,omitempty" validate:"omitempty,min=3,max=20,alphanum"`
 }
 
 type updateRequest struct {
-	Alias  string `json:"alias" validate:"required"`
+	Alias  string `json:"alias" validate:"required,min=3,max=20,alphanum"`
 	NewURL string `json:"url" validate:"required,url"`
 }
 
 type aliasRequest struct {
-	Alias string `validate:"required"`
+	Alias string `validate:"required,min=3,max=20,alphanum"`
 }
 
-func (s *Service) SaveURL(urlToSave string, alias string) (string, error) {
-	if err := validator.New().Struct(saveRequest{URL: urlToSave}); err != nil {
+func (s *Service) SaveURL(ctx context.Context, urlToSave string, alias string) (string, error) {
+	if err := validator.New().Struct(saveRequest{URL: urlToSave, Alias: alias}); err != nil {
 		return "", err
 	}
 
 	if alias != "" {
-		if err := s.aliasExists(alias); err != nil {
-			return "", err
-		}
-
-		_, err := s.storage.SaveURL(urlToSave, alias)
+		_, err := s.storage.SaveURL(ctx, urlToSave, alias)
 		if err != nil {
 			if errors.Is(err, storage.ErrURLExists) {
 				return "", ErrURLExists
@@ -68,15 +65,7 @@ func (s *Service) SaveURL(urlToSave string, alias string) (string, error) {
 	for {
 		generatedAlias := random.NewRandomString(aliasLength)
 
-		err := s.aliasExists(generatedAlias)
-		if errors.Is(err, ErrURLExists) {
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-
-		_, err = s.storage.SaveURL(urlToSave, generatedAlias)
+		_, err := s.storage.SaveURL(ctx, urlToSave, generatedAlias)
 		if errors.Is(err, storage.ErrURLExists) {
 			continue
 		}
@@ -88,12 +77,12 @@ func (s *Service) SaveURL(urlToSave string, alias string) (string, error) {
 	}
 }
 
-func (s *Service) GetURL(alias string) (string, error) {
+func (s *Service) GetURL(ctx context.Context, alias string) (string, error) {
 	if err := validator.New().Struct(aliasRequest{Alias: alias}); err != nil {
 		return "", err
 	}
 
-	url, err := s.storage.GetURL(alias)
+	url, err := s.storage.GetURL(ctx, alias)
 	if errors.Is(err, storage.ErrURLNotFound) {
 		return "", ErrURLNotFound
 	}
@@ -101,12 +90,12 @@ func (s *Service) GetURL(alias string) (string, error) {
 	return url, err
 }
 
-func (s *Service) DeleteURL(alias string) (int64, error) {
+func (s *Service) DeleteURL(ctx context.Context, alias string) (int64, error) {
 	if err := validator.New().Struct(aliasRequest{Alias: alias}); err != nil {
 		return 0, err
 	}
 
-	countDeleted, err := s.storage.DeleteURL(alias)
+	countDeleted, err := s.storage.DeleteURL(ctx, alias)
 	if err != nil {
 		return 0, err
 	}
@@ -117,12 +106,12 @@ func (s *Service) DeleteURL(alias string) (int64, error) {
 	return countDeleted, nil
 }
 
-func (s *Service) UpdateURL(alias string, newURL string) (int64, error) {
+func (s *Service) UpdateURL(ctx context.Context, alias string, newURL string) (int64, error) {
 	if err := validator.New().Struct(updateRequest{Alias: alias, NewURL: newURL}); err != nil {
 		return 0, err
 	}
 
-	countUpdated, err := s.storage.UpdateURL(alias, newURL)
+	countUpdated, err := s.storage.UpdateURL(ctx, alias, newURL)
 	if err != nil {
 		return 0, err
 	}
@@ -131,12 +120,4 @@ func (s *Service) UpdateURL(alias string, newURL string) (int64, error) {
 	}
 
 	return countUpdated, nil
-}
-
-func (s *Service) aliasExists(alias string) error {
-	_, err := s.storage.GetURL(alias)
-	if errors.Is(err, storage.ErrURLNotFound) {
-		return nil
-	}
-	return err
 }

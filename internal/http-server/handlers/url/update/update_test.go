@@ -11,12 +11,13 @@ import (
 	"url-shortener/internal/lib/logger/handlers/slogdiscard"
 	"url-shortener/internal/service"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestUpdate_Success(t *testing.T) {
 	urlUpdaterMock := mocks.NewURLUpdater(t)
-	urlUpdaterMock.On("UpdateURL", "test_alias", "https://google.com").
+	urlUpdaterMock.On("UpdateURL", mock.Anything, "test_alias", "https://google.com").
 		Return(int64(1), nil).Once()
 
 	handler := update.New(slogdiscard.NewDiscardLogger(), urlUpdaterMock)
@@ -55,7 +56,7 @@ func TestUpdate_BadRequest(t *testing.T) {
 
 func TestUpdate_NotFound(t *testing.T) {
 	urlUpdaterMock := mocks.NewURLUpdater(t)
-	urlUpdaterMock.On("UpdateURL", "missing", "https://google.com").
+	urlUpdaterMock.On("UpdateURL", mock.Anything, "missing", "https://google.com").
 		Return(int64(0), service.ErrURLNotFound).Once()
 
 	handler := update.New(slogdiscard.NewDiscardLogger(), urlUpdaterMock)
@@ -75,7 +76,7 @@ func TestUpdate_NotFound(t *testing.T) {
 
 func TestUpdate_InternalServerError(t *testing.T) {
 	urlUpdaterMock := mocks.NewURLUpdater(t)
-	urlUpdaterMock.On("UpdateURL", "test_alias", "https://google.com").
+	urlUpdaterMock.On("UpdateURL", mock.Anything, "test_alias", "https://google.com").
 		Return(int64(0), errors.New("database error")).Once()
 
 	handler := update.New(slogdiscard.NewDiscardLogger(), urlUpdaterMock)

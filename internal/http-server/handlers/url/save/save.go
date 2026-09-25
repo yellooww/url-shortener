@@ -1,6 +1,7 @@
 package save
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -25,7 +26,7 @@ type Response struct {
 }
 
 type URLSaver interface {
-	SaveURL(urlToSave string, alias string) (string, error)
+	SaveURL(ctx context.Context, urlToSave string, alias string) (string, error)
 }
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=URLSaver --dir=. --output=./mocks --outpkg=mocks
@@ -53,7 +54,7 @@ func New(log *slog.Logger, urlSaver URLSaver) http.HandlerFunc {
 
 		log.Info("request body decoded", slog.Any("request", req))
 
-		alias, err := urlSaver.SaveURL(req.URL, req.Alias)
+		alias, err := urlSaver.SaveURL(r.Context(), req.URL, req.Alias)
 
 		var validErrs validator.ValidationErrors
 		if errors.As(err, &validErrs) {

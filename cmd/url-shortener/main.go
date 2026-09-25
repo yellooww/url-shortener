@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"url-shortener/internal/config"
 	"url-shortener/internal/http-server/handlers/redirect"
@@ -34,7 +39,10 @@ func main() {
 	log.Debug("debug messages are enabled")
 	log.Error("error messages are enabled")
 
-	storage, err := postgres.New(cfg.DatabaseURL)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	storage, err := postgres.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Error("failed to init storage", sl.Err(err))
 		os.Exit(1)
@@ -64,18 +72,37 @@ func main() {
 
 	router.Get("/{alias}", redirect.New(log, urlService))
 
-	log.Info("starting server", slog.String("address", cfg.Address))
+	// log.Info("starting server", slog.String("address", cfg.HTTPServer.Address))
 
 	srv := &http.Server{
-		Addr:         cfg.Address,
+		Addr:         cfg.HTTPServer.Address,
 		Handler:      router,
 		ReadTimeout:  cfg.HTTPServer.Timeout,
 		WriteTimeout: cfg.HTTPServer.Timeout,
 		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server")
+	serverErr := make(chan error, 1)
+	go func() {
+		log.Info("starting server", slog.String("address", cfg.HTTPServer.Address))
+		serverErr <- srv.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Error("failed to start server", sl.Err(err))
+			return
+		}
+	case <-ctx.Done():
+		log.Info("shutdown signal received")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("failed to shutdown server", sl.Err(err))
 	}
 
 	log.Info("server stopped")

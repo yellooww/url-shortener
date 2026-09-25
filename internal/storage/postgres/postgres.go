@@ -16,30 +16,28 @@ type Storage struct {
 	db *pgxpool.Pool
 }
 
-func New(storagePath string) (*Storage, error) {
+func New(ctx context.Context, storagePath string) (*Storage, error) {
 	const op = "storage.postgres.New"
 
-	db, err := pgxpool.New(context.Background(), storagePath)
+	db, err := pgxpool.New(ctx, storagePath)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	_, err = db.Exec(context.Background(), `
-		CREATE TABLE IF NOT EXISTS url (
-			id SERIAL PRIMARY KEY, 
-			alias TEXT NOT NULL UNIQUE,
-			url TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT NOW()
-		);
-		CREATE INDEX IF NOT EXISTS idx_alias ON url(alias);
-	`)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
+	if err := db.Ping(ctx); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("%s: ping database: %w", op, err)
 	}
+
+	if err := runMigrations(ctx, storagePath); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("%s: run migrations: %w", op, err)
+	}
+
 	return &Storage{db: db}, nil
 }
 
-func (s *Storage) SaveURL(urlToSave string, alias string) (int64, error) {
+func (s *Storage) SaveURL(ctx context.Context, urlToSave string, alias string) (int64, error) {
 	const op = "storage.postgres.SaveURL"
 
 	var id int64
@@ -51,7 +49,7 @@ func (s *Storage) SaveURL(urlToSave string, alias string) (int64, error) {
 	// 	urlToSave,
 	// ).Scan(&id)
 
-	err := s.db.QueryRow(context.Background(),
+	err := s.db.QueryRow(ctx,
 		`INSERT INTO url(alias, url) VALUES($1, $2)
 		RETURNING id`,
 		alias,
@@ -71,11 +69,11 @@ func (s *Storage) SaveURL(urlToSave string, alias string) (int64, error) {
 	return id, nil
 }
 
-func (s *Storage) GetURL(alias string) (string, error) {
+func (s *Storage) GetURL(ctx context.Context, alias string) (string, error) {
 	const op = "storage.postgres.GetURL"
 
 	var url string
-	err := s.db.QueryRow(context.Background(),
+	err := s.db.QueryRow(ctx,
 		`SELECT url FROM url WHERE alias = $1`, alias).Scan(&url)
 
 	if err != nil {
@@ -89,10 +87,10 @@ func (s *Storage) GetURL(alias string) (string, error) {
 	return url, nil
 }
 
-func (s *Storage) DeleteURL(alias string) (int64, error) {
+func (s *Storage) DeleteURL(ctx context.Context, alias string) (int64, error) {
 	const op = "storage.postgres.DeleteURL"
 
-	result, err := s.db.Exec(context.Background(),
+	result, err := s.db.Exec(ctx,
 		"DELETE FROM url WHERE alias = $1", alias)
 	if err != nil {
 		return 0, fmt.Errorf("%s: execute statement %w", op, err)
@@ -103,10 +101,10 @@ func (s *Storage) DeleteURL(alias string) (int64, error) {
 	return rowsAffected, nil
 }
 
-func (s *Storage) UpdateURL(alias string, newURL string) (int64, error) {
+func (s *Storage) UpdateURL(ctx context.Context, alias string, newURL string) (int64, error) {
 	const op = "storage.postgres.UpdateURL"
 
-	result, err := s.db.Exec(context.Background(),
+	result, err := s.db.Exec(ctx,
 		"UPDATE url SET url = $1 WHERE alias = $2", newURL, alias)
 	if err != nil {
 		return 0, fmt.Errorf("%s: execute statement %w", op, err)

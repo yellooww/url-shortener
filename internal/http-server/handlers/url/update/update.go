@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -24,7 +25,7 @@ type Response struct {
 }
 
 type URLUpdater interface {
-	UpdateURL(alias string, newURL string) (int64, error)
+	UpdateURL(ctx context.Context, alias string, newURL string) (int64, error)
 }
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=URLUpdater --dir=. --output=./mocks --outpkg=mocks
@@ -52,7 +53,7 @@ func New(log *slog.Logger, updateURL URLUpdater) http.HandlerFunc {
 		alias := req.Alias
 		newURL := req.NewURL
 
-		countUpdated, err := updateURL.UpdateURL(alias, newURL)
+		countUpdated, err := updateURL.UpdateURL(r.Context(), alias, newURL)
 
 		var validErrs validator.ValidationErrors
 		if errors.As(err, &validErrs) {
